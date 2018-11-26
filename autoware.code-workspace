@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/",
+		"files.associations": {
+			"iostream": "cpp",
+			"memory": "cpp"
+		}
+	}
+}

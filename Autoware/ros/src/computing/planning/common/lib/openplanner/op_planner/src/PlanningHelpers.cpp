@@ -131,6 +131,7 @@ bool PlanningHelpers::GetRelativeInfo(const std::vector<WayPoint> &trajectory, c
 	Mat3 invRotationMat(p1.pos.a);
 	Mat3 invTranslationMat(p.pos.x, p.pos.y);
 
+	// 将 p0，p1 绕 p 点旋转 p1.a（其实就是直线的倾斜角），旋转之后直线的截距就是 p 到直线的距离了，可以画图来看更为直观
 	p0.pos = translationMat * p0.pos;
 	p0.pos = rotationMat * p0.pos;
 
@@ -719,7 +720,7 @@ int PlanningHelpers::GetClosestNextPointIndexDirectionFast(const vector<WayPoint
 		}
 	}
 
-	//why
+	//why ，其实就是为了保证车能够往路径前进方向（curr->next 方向）走，不至于强行走到 curr 然后再走到 next，虽然看似 curr 离当前位置最近，但实际是绕远路了
 	if (min_index < (int)trajectory.size() - 2)
 	{
 		GPSPoint curr, next;
@@ -1535,11 +1536,11 @@ void PlanningHelpers::CalculateRollInTrajectories(const WayPoint &carPos, const 
 	RelativeInfo info;
 	GetRelativeInfo(originalCenter, carPos, info);
 	double remaining_distance = 0;
-	int close_index = info.iBack;//小车现在位置距离originalcenter最近进的index
+	int close_index = info.iBack;//小车现在位置距离originalcenter最近点的前一个的index
 	for (unsigned int i = close_index; i < originalCenter.size() - 1; i++)
 	{
 		if (i > 0)
-			remaining_distance += distance2points(originalCenter[i].pos, originalCenter[i + 1].pos);//计算距离终点还省的距离
+			remaining_distance += distance2points(originalCenter[i].pos, originalCenter[i + 1].pos);//计算距离终点还剩的距离
 	}
 
 	double initial_roll_in_distance = info.perp_distance; //GetPerpDistanceToTrajectorySimple(originalCenter, carPos, close_index);
@@ -1637,7 +1638,9 @@ void PlanningHelpers::CalculateRollInTrajectories(const WayPoint &carPos, const 
 	vector<double> inc_list_inc;
 	for (int i = 0; i < rollOutNumber + 1; i++)
 	{
+		// 当车偏离全局路径时不应是简单的 diff，而需要考虑到车辆与全局路径的偏移也就是 initial_roll_in_distance
 		double diff = end_laterals.at(i) - initial_roll_in_distance;
+		// 每个局部路径在 rollin 段增加的偏离基值
 		inc_list.push_back(diff / (double)nSteps);
 		rollInPaths.push_back(vector<WayPoint>());
 		inc_list_inc.push_back(0);
@@ -1654,8 +1657,12 @@ void PlanningHelpers::CalculateRollInTrajectories(const WayPoint &carPos, const 
 		double original_speed = p.v;
 		for (unsigned int i = 0; i < rollOutNumber + 1; i++)
 		{
+			// cartip 段平行于 originalCenter 中的轨迹（平行距离也就是车辆与最近轨迹的垂直距离 info.perp），当车偏离原始轨迹时保证轨迹是以车辆位置为起始点的。
+			// 如果没有后面一项，当车偏移 originalCenter 时，生成的局部路径就是完全以 originalCenter 上的点为起点了。
+			// 在换道中可以体现明显作用，这也算是为什么要计算 info.perp 了
 			p.pos.x = originalCenter.at(j).pos.x - initial_roll_in_distance * cos(p.pos.a + M_PI_2);
 			p.pos.y = originalCenter.at(j).pos.y - initial_roll_in_distance * sin(p.pos.a + M_PI_2);
+			// 换道时降速
 			if (i != centralTrajectoryIndex)
 				p.v = original_speed * LANE_CHANGE_SPEED_FACTOR;
 			else

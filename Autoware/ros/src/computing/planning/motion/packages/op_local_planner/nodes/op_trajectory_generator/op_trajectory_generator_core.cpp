@@ -109,6 +109,7 @@ void TrajectoryGen::UpdatePlanningParams(ros::NodeHandle& _nh)
 	_nh.getParam("/op_common_params/smoothingDataWeight", m_PlanningParams.smoothingDataWeight);
 	_nh.getParam("/op_common_params/smoothingSmoothWeight", m_PlanningParams.smoothingSmoothWeight);
 
+	// 单词拼写错误，什么鬼
 	_nh.getParam("/op_common_params/horizontalSafetyDistance", m_PlanningParams.horizontalSafetyDistancel);
 	_nh.getParam("/op_common_params/verticalSafetyDistance", m_PlanningParams.verticalSafetyDistance);
 
@@ -169,6 +170,7 @@ void TrajectoryGen::callbackGetCanInfo(const autoware_msgs::CanInfoConstPtr &msg
 void TrajectoryGen::callbackGetRobotOdom(const nav_msgs::OdometryConstPtr& msg)
 {
 	m_VehicleStatus.speed = msg->twist.twist.linear.x;
+	// TODO: 目前还不知道为什么这么算
 	m_VehicleStatus.steer += atan(m_CarInfo.wheel_base * msg->twist.twist.angular.z/msg->twist.twist.linear.x);
 	UtilityHNS::UtilityH::GetTickCount(m_VehicleStatus.tStamp);
 	bVehicleStatus = true;
@@ -180,6 +182,7 @@ void TrajectoryGen::callbackGetGlobalPlannerPath(const autoware_msgs::LaneArrayC
 	{
 		bool bOldGlobalPath = m_GlobalPaths.size() == msg->lanes.size();
 
+		// bug 下面的相同路径判断有错
 		m_GlobalPaths.clear();
 
 		for(unsigned int i = 0 ; i < msg->lanes.size(); i++)
