@@ -169,7 +169,7 @@ void TrajectoryEval::callbackGetGlobalPlannerPath(const autoware_msgs::LaneArray
 {
 	if(msg->lanes.size() > 0)
 	{
-
+		// 老毛病，相同路径判断有 bug
 		bool bOldGlobalPath = m_GlobalPaths.size() == msg->lanes.size();//原路径总数是否等于新收到的路径总数
 
 		m_GlobalPaths.clear();

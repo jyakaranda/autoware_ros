@@ -50,7 +50,15 @@
 
 using namespace cv;
 
-static void downsamplePoints(const Mat& src, Mat& dst, size_t count)
+/**
+ * @brief 道格拉斯-普客算法用离散点近似曲线并减少点的数量，不过这里不是原版的找垂直距离最大，而是两点间距离最大的点，一直到找到 count 个，比原来的更简单
+ * 是一种最大化点间最小距离（降采样）的方法
+ * 
+ * @param src 
+ * @param dst 
+ * @param count 
+ */
+static void downsamplePoints(const Mat &src, Mat &dst, size_t count)
 {
   CV_Assert(count >= 2);
   CV_Assert(src.cols == 1 || src.rows == 1);
@@ -67,7 +75,7 @@ static void downsamplePoints(const Mat& src, Mat& dst, size_t count)
   {
     for (int j = i; j < dists.cols; j++)
     {
-      float dist = (float)norm(src.at<Point3_<uchar> >(i) - src.at<Point3_<uchar> >(j));
+      float dist = (float)norm(src.at<Point3_<uchar>>(i) - src.at<Point3_<uchar>>(j));
       dists.at<float>(j, i) = dists.at<float>(i, j) = dist;
     }
   }
@@ -76,8 +84,8 @@ static void downsamplePoints(const Mat& src, Mat& dst, size_t count)
   Point maxLoc;
   minMaxLoc(dists, 0, &maxVal, 0, &maxLoc);
 
-  dst.at<Point3_<uchar> >(0) = src.at<Point3_<uchar> >(maxLoc.x);
-  dst.at<Point3_<uchar> >(1) = src.at<Point3_<uchar> >(maxLoc.y);
+  dst.at<Point3_<uchar>>(0) = src.at<Point3_<uchar>>(maxLoc.x);
+  dst.at<Point3_<uchar>>(1) = src.at<Point3_<uchar>>(maxLoc.y);
 
   Mat activedDists(0, dists.cols, dists.type());
   Mat candidatePointsMask(1, dists.cols, CV_8UC1, Scalar(255));
@@ -92,11 +100,11 @@ static void downsamplePoints(const Mat& src, Mat& dst, size_t count)
     Mat minDists;
     reduce(activedDists, minDists, 0, CV_REDUCE_MIN);
     minMaxLoc(minDists, 0, &maxVal, 0, &maxLoc, candidatePointsMask);
-    dst.at<Point3_<uchar> >((int)i) = src.at<Point3_<uchar> >(maxLoc.x);
+    dst.at<Point3_<uchar>>((int)i) = src.at<Point3_<uchar>>(maxLoc.x);
   }
 }
 
-void generateColors(std::vector<Scalar>& colors, size_t count, size_t factor = 100)
+void generateColors(std::vector<Scalar> &colors, size_t count, size_t factor = 100)
 {
   if (count < 1)
     return;
@@ -105,13 +113,13 @@ void generateColors(std::vector<Scalar>& colors, size_t count, size_t factor = 1
 
   if (count == 1)
   {
-    colors[0] = Scalar(0, 0, 255);  // red
+    colors[0] = Scalar(0, 0, 255); // red
     return;
   }
   if (count == 2)
   {
-    colors[0] = Scalar(0, 0, 255);  // red
-    colors[1] = Scalar(0, 255, 0);  // green
+    colors[0] = Scalar(0, 0, 255); // red
+    colors[1] = Scalar(0, 255, 0); // green
     return;
   }
 
@@ -143,4 +151,4 @@ void generateColors(std::vector<Scalar>& colors, size_t count, size_t factor = 1
   }
 }
 
-#endif  // GENCOLORS_CPP
+#endif // GENCOLORS_CPP

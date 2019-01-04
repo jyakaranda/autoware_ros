@@ -997,7 +997,9 @@ void differenceNormalsSegmentation(const pcl::PointCloud<pcl::PointXYZ>::Ptr in_
   // Apply filter
   cond_removal.filter(*diffnormals_cloud_filtered);
 
-  pcl::copyPointCloud<pcl::PointNormal, pcl::PointXYZ>(*diffnormals_cloud, *out_cloud_ptr);
+  // 错误，应该是下面那个
+  // pcl::copyPointCloud<pcl::PointNormal, pcl::PointXYZ>(*diffnormals_cloud, *out_cloud_ptr);
+  pcl::copyPointCloud<pcl::PointNormal, pcl::PointXYZ>(*diffnormals_cloud_filtered, *out_cloud_ptr);
 }
 
 void removePointsUpTo(const pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud_ptr,
@@ -1018,6 +1020,7 @@ void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& in_sensor_cloud)
 {
   //_start = std::chrono::system_clock::now();
 
+  // 简单的信号量，有点挫
   if (!_using_sensor_cloud)
   {
     _using_sensor_cloud = true;
@@ -1044,23 +1047,28 @@ void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& in_sensor_cloud)
 
     if (_remove_points_upto > 0.0)
     {
+      // 1. 移除雷达周围点云，保留 dist(x,y) > _remove_points_upto
       removePointsUpTo(current_sensor_cloud_ptr, removed_points_cloud_ptr, _remove_points_upto);
     }
     else
       removed_points_cloud_ptr = current_sensor_cloud_ptr;
 
+    // 2. voxel 进行过滤
     if (_downsample_cloud)
       downsampleCloud(removed_points_cloud_ptr, downsampled_cloud_ptr, _leaf_size);
     else
       downsampled_cloud_ptr = removed_points_cloud_ptr;
 
+    // 3. 仅保留一定高度范围内的点云，保留 _clip_min_height <= z <= _clip_max_height
     clipCloud(downsampled_cloud_ptr, clipped_cloud_ptr, _clip_min_height, _clip_max_height);
 
+    // 4. 仅保留车道点云，保留 -_keep_lane_right_distance <= y <= _keep_lane_left_distance
     if (_keep_lanes)
       keepLanePoints(clipped_cloud_ptr, inlanes_cloud_ptr, _keep_lane_left_distance, _keep_lane_right_distance);
     else
       inlanes_cloud_ptr = clipped_cloud_ptr;
 
+    // 5. 使用 ransac 分离水平地面，直接调 pcl 的 api，可以看下源码学习一下 ransac。TODO: 看源码和原理
     if (_remove_ground)
     {
       removeFloor(inlanes_cloud_ptr, nofloor_cloud_ptr, onlyfloor_cloud_ptr);
@@ -1069,13 +1077,16 @@ void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& in_sensor_cloud)
     else
       nofloor_cloud_ptr = inlanes_cloud_ptr;
 
+    // 滤波以及去除地面的点云
     publishCloud(&_pub_points_lanes_cloud, nofloor_cloud_ptr);
 
+    // 6. 还是直接调的 pcl api，difference of normal based segmentation，连注释都一样。。。还没看算法原理 TODO: 看源码和原理
     if (_use_diffnormals)
       differenceNormalsSegmentation(nofloor_cloud_ptr, diffnormals_cloud_ptr);
     else
       diffnormals_cloud_ptr = nofloor_cloud_ptr;
 
+    // 7. 欧氏距离聚类，非 gpu 版的还是直接调 pcl api，gpu 版的应该是自己实现的 TODO: 看源码和原理
     segmentByDistance(diffnormals_cloud_ptr, colored_clustered_cloud_ptr, boundingbox_array, centroids, cloud_clusters,
                       polygon_array, pictograms_array);
 
@@ -1198,6 +1209,7 @@ int main(int argc, char** argv)
   tf::TransformListener listener;
   tf::TransformListener vectormap_tf_listener;
 
+  // 学到一招，这样就可以 ros::init 只有再初始化 NodeHandle（TransformListener） 了
   _vectormap_transform_listener = &vectormap_tf_listener;
   _transform = &transform;
   _transform_listener = &listener;
@@ -1248,18 +1260,22 @@ int main(int argc, char** argv)
   }
 
   /* Initialize tuning parameter */
+  // 是否使用 voxel 进行降采样，基于 leaf_size
   private_nh.param("downsample_cloud", _downsample_cloud, false);
   ROS_INFO("downsample_cloud: %d", _downsample_cloud);
   private_nh.param("remove_ground", _remove_ground, true);
   ROS_INFO("remove_ground: %d", _remove_ground);
   private_nh.param("leaf_size", _leaf_size, 0.1);
   ROS_INFO("leaf_size: %f", _leaf_size);
+  // 聚类中包含的最小点数
   private_nh.param("cluster_size_min", _cluster_size_min, 20);
   ROS_INFO("cluster_size_min %d", _cluster_size_min);
+  // 聚类中包含的最大点数
   private_nh.param("cluster_size_max", _cluster_size_max, 100000);
   ROS_INFO("cluster_size_max: %d", _cluster_size_max);
   private_nh.param("pose_estimation", _pose_estimation, false);
   ROS_INFO("pose_estimation: %d", _pose_estimation);
+  // 剔除一定高度的点云
   private_nh.param("clip_min_height", _clip_min_height, -1.3);
   ROS_INFO("clip_min_height: %f", _clip_min_height);
   private_nh.param("clip_max_height", _clip_max_height, 0.5);
