@@ -1069,6 +1069,7 @@ void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& in_sensor_cloud)
       inlanes_cloud_ptr = clipped_cloud_ptr;
 
     // 5. 使用 ransac 分离水平地面，直接调 pcl 的 api，可以看下源码学习一下 ransac。TODO: 看源码和原理
+    // 原理和源码在 ransac.md 里有介绍
     if (_remove_ground)
     {
       removeFloor(inlanes_cloud_ptr, nofloor_cloud_ptr, onlyfloor_cloud_ptr);
@@ -1081,12 +1082,14 @@ void velodyne_callback(const sensor_msgs::PointCloud2ConstPtr& in_sensor_cloud)
     publishCloud(&_pub_points_lanes_cloud, nofloor_cloud_ptr);
 
     // 6. 还是直接调的 pcl api，difference of normal based segmentation，连注释都一样。。。还没看算法原理 TODO: 看源码和原理
+    // 源码和原理在 0105.md 中有介绍，这里是过滤出了差值较大的点
     if (_use_diffnormals)
       differenceNormalsSegmentation(nofloor_cloud_ptr, diffnormals_cloud_ptr);
     else
       diffnormals_cloud_ptr = nofloor_cloud_ptr;
 
     // 7. 欧氏距离聚类，非 gpu 版的还是直接调 pcl api，gpu 版的应该是自己实现的 TODO: 看源码和原理
+    // 原理就是泛洪的欧氏距离聚类，很简单，源码跟 pcl documetation 上的伪代码是一样的
     segmentByDistance(diffnormals_cloud_ptr, colored_clustered_cloud_ptr, boundingbox_array, centroids, cloud_clusters,
                       polygon_array, pictograms_array);
 
