@@ -47,6 +47,7 @@ protected:
 
 	virtual void computeTransformation(const Eigen::Matrix<float, 4, 4> &guess);
 
+	// TODO: 这个干嘛的还不知道
 	double transformation_epsilon_;
 	int max_iterations_;
 

@@ -72,6 +72,7 @@ namespace pcl_omp
       typedef boost::shared_ptr< Registration<PointSource, PointTarget, Scalar> > Ptr;
       typedef boost::shared_ptr< const Registration<PointSource, PointTarget, Scalar> > ConstPtr;
 
+      // TODO: 还不知道干吗用的
       typedef typename pcl::registration::CorrespondenceRejector::Ptr CorrespondenceRejectorPtr;
       typedef pcl::search::KdTree<PointTarget> KdTree;
       typedef typename pcl::search::KdTree<PointTarget>::Ptr KdTreePtr;
@@ -326,6 +327,7 @@ namespace pcl_omp
       inline double
       getMaxCorrespondenceDistance () { return (corr_dist_threshold_); }
 
+      // epsilon 的作用应该就是提前终止迭代的，如果 transformation 的差异小于 epsilon 的话
       /** \brief Set the transformation epsilon (maximum allowable difference between two consecutive
         * transformations) in order for an optimization to be considered as having converged to the final
         * solution.
