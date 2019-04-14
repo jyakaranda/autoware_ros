@@ -60,6 +60,7 @@ void Octree<PointSourceType>::setInput(std::vector<Eigen::Vector3i> occupied_vox
 	occupancy_check_ = boost::make_shared<std::vector<std::vector<unsigned int> > >();
 
 	// Reserve memory
+	// 在每个维度(xyz)上找最小和最大下标，这个在 VoxelGrid::findBoundaries 中已经算过了（是 real_max_b_x_，注意 max_b_x_ 有取整，不完全一样），可以不必重复计算
 	int max_b_x, max_b_y, max_b_z;
 	int min_b_x, min_b_y, min_b_z;
 
@@ -67,7 +68,8 @@ void Octree<PointSourceType>::setInput(std::vector<Eigen::Vector3i> occupied_vox
 	min_b_x = min_b_y = min_b_z = INT_MAX;
 
 	for (int i = 0; i < occupied_voxels.size(); i++) {
-		Eigen::Vector3i vid = occupied_voxels[i];
+		// Eigen::Vector3i vid = occupied_voxels[i];
+		const Eigen::Vector3i &vid = occupied_voxels[i];
 
 		if (min_b_x > vid(0)) {
 			min_b_x = vid(0);
@@ -120,14 +122,16 @@ void Octree<PointSourceType>::setInput(std::vector<Eigen::Vector3i> occupied_vox
 	std::vector<unsigned int> occupancy0(static_cast<int>((node_number + sizeof(unsigned int) * 8 - 1) / (sizeof(unsigned int) * 8)), 0);
 
 	(*octree_).push_back(level0);
+	// 保存每一层的上下限（每个维度）
 	(*reserved_size_).push_back(level);
+	// 保存每一层的数量（每个维度，可通过 reserved_size_ 计算出来，不知道后面能不能省略）
 	(*dimension_).push_back(level_size);
 	(*occupancy_check_).push_back(occupancy0);
 
 	int tree_level = 0;
 
 
-
+	// 划分到子节点数小于等于 8 为止
 	while (node_number > 8) {
 		level.lower_x = div(level.lower_x, 2);
 		level.lower_y = div(level.lower_y, 2);
@@ -154,7 +158,8 @@ void Octree<PointSourceType>::setInput(std::vector<Eigen::Vector3i> occupied_vox
 
 	// Setup the lowest level
 	for (int i = 0; i < occupied_voxels.size(); i++) {
-		Eigen::Vector3i vid = occupied_voxels[i];
+		// Eigen::Vector3i vid = occupied_voxels[i];
+		const Eigen::Vector3i &vid = occupied_voxels[i];
 
 		// Indexes of the octree node that contains the current voxel
 		int nidx = div(vid(0), leaf_x_);
@@ -166,7 +171,8 @@ void Octree<PointSourceType>::setInput(std::vector<Eigen::Vector3i> occupied_vox
 		std::vector<OctreeNode> &current_level = (*octree_)[0];
 		OctreeLevelBoundaries curb = (*reserved_size_)[0];
 		OctreeNode &current_node = current_level[nid];
-		PointSourceType p = point_cloud->points[i];
+		// PointSourceType p = point_cloud->points[i];
+		const PointSourceType &p = point_cloud->points[i];
 
 		// Update boundaries inside the node
 		if (!isOccupied(nid, 0)) {
@@ -232,8 +238,8 @@ bool Octree<PointSourceType>::isOccupied(int node_id, int level)
 {
 	std::vector<unsigned int> &current_occ = (*occupancy_check_)[level];
 
-	int val_loc = node_id / (sizeof(int) * 8);
-	int bit_loc = node_id % (sizeof(int) * 8);
+	int val_loc = node_id / (sizeof(unsigned int) * 8);
+	int bit_loc = node_id % (sizeof(unsigned int) * 8);
 
 	return ((current_occ[val_loc] & (1 << bit_loc)) == (1 << bit_loc));
 }
@@ -516,8 +522,10 @@ void Octree<PointSourceType>::updateBoundaries(std::vector<Eigen::Vector3i> new_
 template <typename PointSourceType>
 int Octree<PointSourceType>::index2id(int idx, int idy, int idz, int level)
 {
-	OctreeLevelBoundaries bound = (*reserved_size_)[level];
-	OctreeLevelDim dim = (*dimension_)[level];
+	// OctreeLevelBoundaries bound = (*reserved_size_)[level];
+	// OctreeLevelDim dim = (*dimension_)[level];
+	const OctreeLevelBoundaries &bound = (*reserved_size_)[level];
+	const OctreeLevelDim &dim = (*dimension_)[level];
 
 	return ((idx - bound.lower_x) + (idy - bound.lower_y) * dim.x + (idz - bound.lower_z) * dim.x * dim.y);
 }
@@ -534,8 +542,10 @@ Eigen::Vector3i Octree<PointSourceType>::id2index(int id, int level)
 {
 	Eigen::Vector3i output;
 
-	OctreeLevelBoundaries bound = (*reserved_size_)[level];
-	OctreeLevelDim dim = (*dimension_)[level];
+	// OctreeLevelBoundaries bound = (*reserved_size_)[level];
+	// OctreeLevelDim dim = (*dimension_)[level];
+	const OctreeLevelBoundaries &bound = (*reserved_size_)[level];
+	const OctreeLevelDim &dim = (*dimension_)[level];
 
 	output(2) = id / (dim.x * dim.y);
 	id -= output(2) * dim.x * dim.y;
@@ -571,11 +581,13 @@ template <typename PointSourceType>
 void Octree<PointSourceType>::updateOctreeContent(std::vector<Eigen::Vector3i> new_voxels, typename pcl::PointCloud<PointSourceType>::Ptr new_cloud)
 {
 	for (int i = 0; i < new_voxels.size(); i++) {
-		Eigen::Vector3i vid = new_voxels[i];
+		// Eigen::Vector3i vid = new_voxels[i];
+		const Eigen::Vector3i &vid = new_voxels[i];
 		int node_idx = div(vid(0), leaf_x_);
 		int node_idy = div(vid(1), leaf_y_);
 		int node_idz = div(vid(2), leaf_z_);
-		PointSourceType p = new_cloud->points[i];
+		// PointSourceType p = new_cloud->points[i];
+		const PointSourceType &p = new_cloud->points[i];
 		Eigen::Vector3d point(p.x, p.y, p.z);
 
 		// Go from bottom to top to update tree nodes
@@ -638,6 +650,7 @@ template <typename PointSourceType>
 Eigen::Matrix<float, 6, 1> Octree<PointSourceType>::nearestOctreeNode(PointSourceType q)
 {
 	double min_range = DBL_MAX;
+	// 名字起的不好，应该是 oid，而不是 voxelid，后面也一样
 	int current_nn_vid = -1;
 
 	initRange(q, min_range, current_nn_vid);
@@ -732,7 +745,8 @@ void Octree<PointSourceType>::initRange(PointSourceType q, double &min_range, in
 
 	// Go down to leaf
 	for (int level = (*octree_).size() - 2; level >= 1; level--) {
-		OctreeLevelBoundaries bounds = (*reserved_size_)[level];
+		// OctreeLevelBoundaries bounds = (*reserved_size_)[level];
+		const OctreeLevelBoundaries &bounds = (*reserved_size_)[level];
 		std::vector<OctreeNode> &cur_level = (*octree_)[level];
 
 		lower_x = (nidx * 2 < bounds.lower_x) ? bounds.lower_x : nidx * 2;
@@ -768,7 +782,8 @@ void Octree<PointSourceType>::initRange(PointSourceType q, double &min_range, in
 	}
 
 	// Inspect leaves
-	OctreeLevelBoundaries bounds = (*reserved_size_)[0];
+	// OctreeLevelBoundaries bounds = (*reserved_size_)[0];
+	const OctreeLevelBoundaries &bounds = (*reserved_size_)[0];
 	std::vector<OctreeNode> &bottom = (*octree_)[0];
 
 	lower_x = (nidx * 2 < bounds.lower_x) ? bounds.lower_x : nidx * 2;
@@ -819,6 +834,7 @@ void Octree<PointSourceType>::goDown(Eigen::Matrix<int, 4, 1> node, PointSourceT
 	std::vector<OctreeNode> &cur_level = (*octree_)[node(3)];
 	OctreeNode cur_node = cur_level[id];
 
+	// 已经到达叶子节点
 	if (node(3) == 0) {
 		Eigen::Vector3d c = cur_node.centroid;
 		double cur_dist = sqrt((c(0) - q.x) * (c(0) - q.x) + (c(1) - q.y) * (c(1) - q.y) + (c(2) - q.z) * (c(2) - q.z));
@@ -827,10 +843,13 @@ void Octree<PointSourceType>::goDown(Eigen::Matrix<int, 4, 1> node, PointSourceT
 			min_range = cur_dist;
 			current_nn_voxel = id;
 		}
+		// 估计是忘了
+		return;
 	}
 
 	double cur_dist = dist(cur_node, q);
 
+	// 剪枝跳出，跟 kdtree 差不多，dist(cur_node, q) 已经是到达该 OcNode 最近的距离了，如果还大的话就可以提前跳出
 	if (cur_dist > min_range) {
 		return;
 	}

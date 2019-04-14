@@ -2,7 +2,8 @@
 #include "ndt_cpu/debug.h"
 #include <iostream>
 
-namespace cpu {
+namespace cpu
+{
 
 template <typename PointSourceType, typename PointTargetType>
 Registration<PointSourceType, PointTargetType>::Registration()
@@ -72,7 +73,6 @@ void Registration<PointSourceType, PointTargetType>::setInputSource(typename pcl
 	source_cloud_ = input;
 }
 
-
 //Set input MAP data
 template <typename PointSourceType, typename PointTargetType>
 void Registration<PointSourceType, PointTargetType>::setInputTarget(typename pcl::PointCloud<PointTargetType>::Ptr input)
@@ -87,15 +87,20 @@ void Registration<PointSourceType, PointTargetType>::align(const Eigen::Matrix<f
 
 	final_transformation_ = transformation_ = previous_transformation_ = Eigen::Matrix<float, 4, 4>::Identity();
 
-	trans_cloud_.points.resize(source_cloud_->points.size());
+	if (guess == Eigen::Matrix4f::Identity())
+	{
+		trans_cloud_.points.resize(source_cloud_->points.size());
 
-	for (int i = 0; i < trans_cloud_.points.size(); i++) {
-		trans_cloud_.points[i] = source_cloud_->points[i];
+		for (int i = 0; i < trans_cloud_.points.size(); i++)
+		{
+			trans_cloud_.points[i] = source_cloud_->points[i];
+		}
 	}
 
 	computeTransformation(guess);
 }
 
+// output 没用，还是用户自己转换吧
 template <typename PointSourceType, typename PointTargetType>
 void Registration<PointSourceType, PointTargetType>::align(typename pcl::PointCloud<PointSourceType> &output, const Eigen::Matrix<float, 4, 4> &guess)
 {
@@ -103,10 +108,11 @@ void Registration<PointSourceType, PointTargetType>::align(typename pcl::PointCl
 }
 
 template <typename PointSourceType, typename PointTargetType>
-void Registration<PointSourceType, PointTargetType>::computeTransformation(const Eigen::Matrix<float, 4, 4> &guess) {
+void Registration<PointSourceType, PointTargetType>::computeTransformation(const Eigen::Matrix<float, 4, 4> &guess)
+{
 	printf("Unsupported by Registration\n");
 }
 
 template class Registration<pcl::PointXYZI, pcl::PointXYZI>;
 template class Registration<pcl::PointXYZ, pcl::PointXYZ>;
-}
+} // namespace cpu

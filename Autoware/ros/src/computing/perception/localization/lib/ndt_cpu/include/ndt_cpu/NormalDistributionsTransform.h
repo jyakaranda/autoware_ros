@@ -12,12 +12,16 @@ class NormalDistributionsTransform: public Registration<PointSourceType, PointTa
 public:
 	NormalDistributionsTransform();
 
+	// 拷贝构造
 	NormalDistributionsTransform(const NormalDistributionsTransform &other);
 
+	// TODO
 	void setStepSize(double step_size);
 
+	// 设置 ndt 中 voxel 的大小
 	void setResolution(float resolution);
 
+	// TODO
 	void setOutlierRatio(double olr);
 
 	double getStepSize() const;
@@ -26,6 +30,7 @@ public:
 
 	double getOutlierRatio() const;
 
+	// TODO: 如何度量的？
 	double getTransformationProbability() const;
 
 	int getRealIterations();
@@ -33,12 +38,15 @@ public:
 	/* Set the input map points */
 	void setInputTarget(typename pcl::PointCloud<PointTargetType>::Ptr input);
 
+	// Euclidean fitness score，output 点云与 target 中最近点距离的平方和。感觉作用不是很大，在环境变化明显的时候，即使位姿比较准确，这个值应该也会挺大的
 	/* Compute and get fitness score */
 	double getFitnessScore(double max_range = DBL_MAX);
 
+	// TODO: 
 	void updateVoxelGrid(typename pcl::PointCloud<PointTargetType>::Ptr new_cloud);
 
 protected:
+	// 给定初始位姿估计，牛顿迭代计算位姿
 	void computeTransformation(const Eigen::Matrix<float, 4, 4> &guess);
 
 
@@ -100,8 +108,13 @@ private:
 					h_ang_e1_, h_ang_e2_, h_ang_e3_,
 					h_ang_f1_, h_ang_f2_, h_ang_f3_;
 
+	// [x,y,z,roll,pitch,yaw] 的最小变化量(m, rad)，当小于这个值时就停止 align
+	// double transformation_epsilon;
+	// More-Thuente line search 的最大步长，大一些可以更快的下降，但也可能 overshoot 导致陷入局部最优
 	double step_size_;
+	// ndt 中 voxel 的大小，每个 voxel 中会保存 mean，covariance 和 点云，这个值是最 scale dependent 的，应该足够大（一个 voxel 至少包含 6 个点），也不能太大（要反映局部空间的特征）
 	float resolution_;
+	// 还不知道怎么度量的
 	double trans_probability_;
 
 	int real_iterations_;

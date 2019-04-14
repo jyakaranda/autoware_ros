@@ -47,7 +47,7 @@ protected:
 
 	virtual void computeTransformation(const Eigen::Matrix<float, 4, 4> &guess);
 
-	// TODO: 这个干嘛的还不知道
+	// [x,y,z,roll,pitch,yaw] 的最小变化量(m, rad)，当小于这个值时就停止 align
 	double transformation_epsilon_;
 	int max_iterations_;
 

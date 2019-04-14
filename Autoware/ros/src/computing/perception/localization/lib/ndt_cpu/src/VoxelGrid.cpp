@@ -51,18 +51,21 @@ VoxelGrid<PointSourceType>::VoxelGrid():
 	tmp_cov_.reset();
 };
 
+// 向上取整，以 factor 为单位
 template <typename PointSourceType>
 int VoxelGrid<PointSourceType>::roundUp(int input, int factor)
 {
 	return (input < 0) ? -((-input) / factor) * factor : ((input + factor - 1) / factor) * factor;
 }
 
+// 向下取整，以 factor 为单位
 template <typename PointSourceType>
 int VoxelGrid<PointSourceType>::roundDown(int input, int factor)
 {
 	return (input < 0) ? -((-input + factor - 1) / factor) * factor : (input / factor) * factor;
 }
 
+// 向下取整的除法
 template <typename PointSourceType>
 int VoxelGrid<PointSourceType>::div(int input, int divisor)
 {
@@ -257,6 +260,30 @@ int VoxelGrid<PointSourceType>::voxelId(int idx, int idy, int idz,
 }
 
 template <typename PointSourceType>
+void VoxelGrid<PointSourceType>::scatterPointsToVoxelGrid()
+{
+
+	for (int pid = 0; pid < source_cloud_->points.size(); pid++) {
+		int vid = voxelId(source_cloud_->points[pid]);
+		PointSourceType p = source_cloud_->points[pid];
+
+		Eigen::Vector3d p3d(p.x, p.y, p.z);
+
+		if ((*points_id_)[vid].size() == 0) {
+			(*centroid_)[vid].setZero();
+			(*points_per_voxel_)[vid] = 0;
+			(*tmp_centroid_)[vid].setZero();
+			(*tmp_cov_)[vid].setIdentity();
+		}
+
+		(*tmp_centroid_)[vid] += p3d;
+		(*tmp_cov_)[vid] += p3d * p3d.transpose();
+		(*points_id_)[vid].push_back(pid);
+		(*points_per_voxel_)[vid]++;
+	}
+}
+
+template <typename PointSourceType>
 void VoxelGrid<PointSourceType>::computeCentroidAndCovariance()
 {
 	for (int idx = real_min_bx_; idx <= real_max_bx_; idx++)
@@ -319,9 +346,11 @@ void VoxelGrid<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceTy
 
 		std::vector<Eigen::Vector3i> voxel_ids(input_cloud->points.size());
 
+		// 获取每个点的 voxel id，[x,y,z] 三个维度上的 id 确定一个 voxel
 		for (int i = 0; i < input_cloud->points.size(); i++) {
 			Eigen::Vector3i &vid = voxel_ids[i];
-			PointSourceType p = input_cloud->points[i];
+			// PointSourceType p = input_cloud->points[i];
+			const PointSourceType &p = input_cloud->points[i];
 
 			vid(0) = static_cast<int>(floor(p.x / voxel_x_));
 			vid(1) = static_cast<int>(floor(p.y / voxel_y_));
@@ -346,6 +375,7 @@ void VoxelGrid<PointSourceType>::findBoundaries()
 
 	findBoundaries(source_cloud_, max_x_, max_y_, max_z_, min_x_, min_y_, min_z_);
 
+	// 各个维度需要的 voxel 数量（正负）
 	real_max_bx_ = max_b_x_ = static_cast<int> (floor(max_x_ / voxel_x_));
 	real_max_by_ = max_b_y_ = static_cast<int> (floor(max_y_ / voxel_y_));
 	real_max_bz_ = max_b_z_ = static_cast<int> (floor(max_z_ / voxel_z_));
@@ -358,20 +388,24 @@ void VoxelGrid<PointSourceType>::findBoundaries()
 	 * we do not have to reallocate buffers when the target cloud is set
 	 */
 	/* Max bounds round toward plus infinity */
+	// 向上取整为 MAX_BX 的倍数
 	max_b_x_ = roundUp(max_b_x_, MAX_BX_);
 	max_b_y_ = roundUp(max_b_y_, MAX_BY_);
 	max_b_z_ = roundUp(max_b_z_, MAX_BZ_);
 
 	/* Min bounds round toward minus infinity */
+	// 向下取整为 MAX_BX 的倍数
 	min_b_x_ = roundDown(min_b_x_, MAX_BX_);
 	min_b_y_ = roundDown(min_b_y_, MAX_BY_);
 	min_b_z_ = roundDown(min_b_z_, MAX_BZ_);
 
+	// 比 real_max_bx_ 要大
 	vgrid_x_ = max_b_x_ - min_b_x_ + 1;
 	vgrid_y_ = max_b_y_ - min_b_y_ + 1;
 	vgrid_z_ = max_b_z_ - min_b_z_ + 1;
 
 	if (vgrid_x_ > 0 && vgrid_y_ > 0 && vgrid_z_ > 0) {
+		// 实际使用的 voxel 就是 vgrid, 比 real 要多一些
 		voxel_num_ = vgrid_x_ * vgrid_y_ * vgrid_z_;
 	} else {
 		voxel_num_ = 0;
@@ -388,17 +422,24 @@ void VoxelGrid<PointSourceType>::findBoundaries(typename pcl::PointCloud<PointSo
 	min_x = min_y = min_z = FLT_MAX;
 
 	for (int i = 0; i < input_cloud->points.size(); i++) {
-		float x = input_cloud->points[i].x;
-		float y = input_cloud->points[i].y;
-		float z = input_cloud->points[i].z;
+		max_x = std::max(max_x, input_cloud->points[i].x);
+		max_y = std::max(max_y, input_cloud->points[i].y);
+		max_z = std::max(max_z, input_cloud->points[i].z);
 
-		max_x = (max_x > x) ? max_x : x;
-		max_y = (max_y > y) ? max_y : y;
-		max_z = (max_z > z) ? max_z : z;
+		min_x = std::min(min_x, input_cloud->points[i].x);
+		min_y = std::min(min_y, input_cloud->points[i].y);
+		min_z = std::min(min_z, input_cloud->points[i].z);
+		// float x = input_cloud->points[i].x;
+		// float y = input_cloud->points[i].y;
+		// float z = input_cloud->points[i].z;
 
-		min_x = (min_x < x) ? min_x : x;
-		min_y = (min_y < y) ? min_y : y;
-		min_z = (min_z < z) ? min_z : z;
+		// max_x = (max_x > x) ? max_x : x;
+		// max_y = (max_y > y) ? max_y : y;
+		// max_z = (max_z > z) ? max_z : z;
+
+		// min_x = (min_x < x) ? min_x : x;
+		// min_y = (min_y < y) ? min_y : y;
+		// min_z = (min_z < z) ? min_z : z;
 	}
 }
 
@@ -453,30 +494,7 @@ void VoxelGrid<PointSourceType>::radiusSearch(PointSourceType p, float radius, s
 	}
 }
 
-template <typename PointSourceType>
-void VoxelGrid<PointSourceType>::scatterPointsToVoxelGrid()
-{
-
-	for (int pid = 0; pid < source_cloud_->points.size(); pid++) {
-		int vid = voxelId(source_cloud_->points[pid]);
-		PointSourceType p = source_cloud_->points[pid];
-
-		Eigen::Vector3d p3d(p.x, p.y, p.z);
-
-		if ((*points_id_)[vid].size() == 0) {
-			(*centroid_)[vid].setZero();
-			(*points_per_voxel_)[vid] = 0;
-			(*tmp_centroid_)[vid].setZero();
-			(*tmp_cov_)[vid].setIdentity();
-		}
-
-		(*tmp_centroid_)[vid] += p3d;
-		(*tmp_cov_)[vid] += p3d * p3d.transpose();
-		(*points_id_)[vid].push_back(pid);
-		(*points_per_voxel_)[vid]++;
-	}
-}
-
+// max_range 没有用，不知道为啥
 template <typename PointSourceType>
 int VoxelGrid<PointSourceType>::nearestVoxel(PointSourceType query_point, Eigen::Matrix<float, 6, 1> boundaries, float max_range)
 {
@@ -502,6 +520,7 @@ int VoxelGrid<PointSourceType>::nearestVoxel(PointSourceType query_point, Eigen:
 				int vid = voxelId(i, j, k, min_b_x_, min_b_y_, min_b_z_, vgrid_x_, vgrid_y_, vgrid_z_);
 				Eigen::Vector3d c = (*centroid_)[vid];
 
+				// 为什么这里只要求数量大于 0，而 radiusSearch 要求数量大于 min_points_per_voxel_
 				if ((*points_id_)[vid].size() > 0) {
 					double cur_dist = sqrt((qx - c(0)) * (qx - c(0)) + (qy - c(1)) * (qy - c(1)) + (qz - c(2)) * (qz - c(2)));
 
@@ -517,13 +536,16 @@ int VoxelGrid<PointSourceType>::nearestVoxel(PointSourceType query_point, Eigen:
 	return nn_vid;
 }
 
+// 找到距离小于 max_range 的最近 voxel 距离。
 template <typename PointSourceType>
 double VoxelGrid<PointSourceType>::nearestNeighborDistance(PointSourceType q, float max_range)
 {
 	Eigen::Matrix<float, 6, 1> nn_node_bounds;
 
+	// 八叉树先确定 voxel 的 bbox，加速查找
 	nn_node_bounds = octree_.nearestOctreeNode(q);
 
+	// 在 bbox 内遍历查找
 	int nn_vid = nearestVoxel(q, nn_node_bounds, max_range);
 
 	Eigen::Vector3d c = (*centroid_)[nn_vid];
@@ -538,6 +560,48 @@ double VoxelGrid<PointSourceType>::nearestNeighborDistance(PointSourceType q, fl
 }
 
 template <typename PointSourceType>
+void VoxelGrid<PointSourceType>::update(typename pcl::PointCloud<PointSourceType>::Ptr new_cloud)
+{
+	if (new_cloud->points.size() <= 0) {
+		return;
+	}
+
+	float new_max_x, new_max_y, new_max_z;
+	float new_min_x, new_min_y, new_min_z;
+
+	// Find boundaries of the new point cloud
+	findBoundaries(new_cloud, new_max_x, new_max_y, new_max_z, new_min_x, new_min_y, new_min_z);
+                                                                                                                                                                                       
+	/* Update current boundaries of the voxel grid
+	 * Also allocate buffer for new voxel grid and
+	 * octree and move the current voxel grid and
+	 * octree to the new buffer if necessary
+	 */
+	updateBoundaries(new_max_x, new_max_y, new_max_z, new_min_x, new_min_y, new_min_z);
+
+	/* Update changed voxels (voxels that contains new points).
+	 * Update centroids of voxels and their covariance matrixes
+	 * as well as inverse covariance matrixes */
+	updateVoxelContent(new_cloud);
+
+	/* Update octree */
+	std::vector<Eigen::Vector3i> new_voxel_id(new_cloud->points.size());
+
+	for (int i = 0; i < new_cloud->points.size(); i++) {
+		Eigen::Vector3i &vid = new_voxel_id[i];
+		PointSourceType p = new_cloud->points[i];
+
+		vid(0) = static_cast<int>(floor(p.x / voxel_x_));
+		vid(1) = static_cast<int>(floor(p.y / voxel_y_));
+		vid(2) = static_cast<int>(floor(p.z / voxel_z_));
+	}
+
+	octree_.update(new_voxel_id, new_cloud);
+
+	*source_cloud_ += *new_cloud;
+}
+
+template <typename PointSourceType>
 void VoxelGrid<PointSourceType>::updateBoundaries(float max_x, float max_y, float max_z,
 													float min_x, float min_y, float min_z)
 {
@@ -545,13 +609,20 @@ void VoxelGrid<PointSourceType>::updateBoundaries(float max_x, float max_y, floa
 	float new_max_x, new_max_y, new_max_z;
 	float new_min_x, new_min_y, new_min_z;
 
-	new_max_x = (max_x_ >= max_x) ? max_x_ : max_x;
-	new_max_y = (max_y_ >= max_y) ? max_y_ : max_y;
-	new_max_z = (max_z_ >= max_z) ? max_z_ : max_z;
+	// new_max_x = (max_x_ >= max_x) ? max_x_ : max_x;
+	// new_max_y = (max_y_ >= max_y) ? max_y_ : max_y;
+	// new_max_z = (max_z_ >= max_z) ? max_z_ : max_z;
 
-	new_min_x = (min_x_ <= min_x) ? min_x_ : min_x;
-	new_min_y = (min_y_ <= min_y) ? min_y_ : min_y;
-	new_min_z = (min_z_ <= min_z) ? min_z_ : min_z;
+	// new_min_x = (min_x_ <= min_x) ? min_x_ : min_x;
+	// new_min_y = (min_y_ <= min_y) ? min_y_ : min_y;
+	// new_min_z = (min_z_ <= min_z) ? min_z_ : min_z;
+	new_max_x = std::max(max_x_, max_x);
+	new_max_y = std::max(max_y_, max_y);
+	new_max_z = std::max(max_z_, max_z);
+
+	new_min_x = std::min(min_x_, min_x);
+	new_min_y = std::min(min_y_, min_y);
+	new_min_z = std::min(min_z_, min_z);
 
 	/* If the boundaries change, then we need to extend the list of voxels */
 	if (new_max_x > max_x_ || new_max_y > max_y_ || new_max_z > max_z_ ||
@@ -672,56 +743,14 @@ void VoxelGrid<PointSourceType>::updateBoundaries(float max_x, float max_y, floa
 	}
 }
 
-
-template <typename PointSourceType>
-void VoxelGrid<PointSourceType>::update(typename pcl::PointCloud<PointSourceType>::Ptr new_cloud)
-{
-	if (new_cloud->points.size() <= 0) {
-		return;
-	}
-
-	float new_max_x, new_max_y, new_max_z;
-	float new_min_x, new_min_y, new_min_z;
-
-	// Find boundaries of the new point cloud
-	findBoundaries(new_cloud, new_max_x, new_max_y, new_max_z, new_min_x, new_min_y, new_min_z);
-
-	/* Update current boundaries of the voxel grid
-	 * Also allocate buffer for new voxel grid and
-	 * octree and move the current voxel grid and
-	 * octree to the new buffer if necessary
-	 */
-	updateBoundaries(new_max_x, new_max_y, new_max_z, new_min_x, new_min_y, new_min_z);
-
-	/* Update changed voxels (voxels that contains new points).
-	 * Update centroids of voxels and their covariance matrixes
-	 * as well as inverse covariance matrixes */
-	updateVoxelContent(new_cloud);
-
-	/* Update octree */
-	std::vector<Eigen::Vector3i> new_voxel_id(new_cloud->points.size());
-
-	for (int i = 0; i < new_cloud->points.size(); i++) {
-		Eigen::Vector3i &vid = new_voxel_id[i];
-		PointSourceType p = new_cloud->points[i];
-
-		vid(0) = static_cast<int>(floor(p.x / voxel_x_));
-		vid(1) = static_cast<int>(floor(p.y / voxel_y_));
-		vid(2) = static_cast<int>(floor(p.z / voxel_z_));
-	}
-
-	octree_.update(new_voxel_id, new_cloud);
-
-	*source_cloud_ += *new_cloud;
-}
-
 template <typename PointSourceType>
 void VoxelGrid<PointSourceType>::updateVoxelContent(typename pcl::PointCloud<PointSourceType>::Ptr new_cloud)
 {
 	int total_points_num = source_cloud_->points.size();
 
 	for (int i = 0; i < new_cloud->points.size(); i++) {
-		PointSourceType p = new_cloud->points[i];
+		// PointSourceType p = new_cloud->points[i];
+		const PointSourceType &p = new_cloud->points[i];
 		Eigen::Vector3d p3d(p.x, p.y, p.z);
 		int vx = static_cast<int>(floor(p.x / voxel_x_));
 		int vy = static_cast<int>(floor(p.y / voxel_y_));

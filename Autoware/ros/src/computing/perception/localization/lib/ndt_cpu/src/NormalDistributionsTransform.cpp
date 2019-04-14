@@ -103,6 +103,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::setInputTar
 	}
 }
 
+// 核心方法
 template <typename PointSourceType, typename PointTargetType>
 void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTransformation(const Eigen::Matrix<float, 4, 4> &guess)
 {
@@ -118,6 +119,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 	gauss_d2_ = -2 * log((-log(gauss_c1 * exp(-0.5) + gauss_c2) - gauss_d3) / gauss_d1_);
 
 	if (guess != Eigen::Matrix4f::Identity()) {
+		transformation_ = guess;
 		final_transformation_ = guess;
 
 		pcl::transformPointCloud(*source_cloud_, trans_cloud_, guess);
@@ -137,6 +139,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 	double score = 0;
 	double delta_p_norm;
 
+	// 这个 score 不知道含义是什么
 	score = computeDerivatives(score_gradient, hessian, trans_cloud_, p);
 
 	int points_number = source_cloud_->points.size();
@@ -176,8 +179,8 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 		nr_iterations_++;
 	}
 
-	if (source_cloud_->points.size() > 0) {
-		trans_probability_ = score / static_cast<double>(source_cloud_->points.size());
+	if (points_number > 0) {
+		trans_probability_ = score / static_cast<double>(points_number);
 	}
 }
 
@@ -209,6 +212,7 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::computeDe
 		neighbor_ids.clear();
 		x_trans_pt = trans_cloud.points[idx];
 
+		// TODO: 为什么不直接找最近的 voxel，而是找一个 radius 内的所有 voxel 来更新 J,H。
 		voxel_grid_.radiusSearch(x_trans_pt, resolution_, neighbor_ids);
 
 		for (int i = 0; i < neighbor_ids.size(); i++) {
@@ -231,6 +235,7 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::computeDe
 	return score;
 }
 
+// 公式 6.18 和 公式 6.19
 template <typename PointSourceType, typename PointTargetType>
 void NormalDistributionsTransform<PointSourceType, PointTargetType>::computePointDerivatives(Eigen::Vector3d &x, Eigen::Matrix<double, 3, 6> &point_gradient, Eigen::Matrix<double, 18, 6> &point_hessian, bool compute_hessian)
 {
@@ -265,6 +270,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computePoin
 	}
 }
 
+// 公式 6.12 和 6.13，感觉这里可以通过提取公共子项提高计算速度
 template <typename PointSourceType, typename PointTargetType>
 double NormalDistributionsTransform<PointSourceType, PointTargetType>::updateDerivatives(Eigen::Matrix<double, 6, 1> &score_gradient, Eigen::Matrix<double, 6, 6> &hessian,
 																							Eigen::Matrix<double, 3, 6> point_gradient, Eigen::Matrix<double, 18, 6> point_hessian,
@@ -276,6 +282,7 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::updateDer
 
 	e_x_cov_x = gauss_d2_ * e_x_cov_x;
 
+	// 为啥？ TODO: 
 	if (e_x_cov_x > 1 || e_x_cov_x < 0 || e_x_cov_x != e_x_cov_x) {
 		return 0.0;
 	}
@@ -299,6 +306,68 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::updateDer
 	return score_inc;
 }
 
+template <typename PointSourceType, typename PointTargetType>
+void NormalDistributionsTransform<PointSourceType, PointTargetType>::updateHessian(Eigen::Matrix<double, 6, 6> &hessian,
+																					Eigen::Matrix<double, 3, 6> point_gradient, Eigen::Matrix<double, 18, 6> point_hessian,
+																					Eigen::Vector3d &x_trans, Eigen::Matrix3d &c_inv)
+{
+	Eigen::Vector3d cov_dxd_pi;
+	double e_x_cov_x = gauss_d2_ * exp(-gauss_d2_ * x_trans.dot(c_inv * x_trans) / 2);
+
+	if (e_x_cov_x > 1 || e_x_cov_x < 0 || e_x_cov_x != e_x_cov_x) {
+		return;
+	}
+
+	e_x_cov_x *= gauss_d1_;
+
+	for (int i = 0; i < 6; i++) {
+		cov_dxd_pi = c_inv * point_gradient.col(i);
+
+		for (int j = 0; j < hessian.cols(); j++) {
+			hessian(i, j) += e_x_cov_x * (-gauss_d2_ * x_trans.dot(cov_dxd_pi) * x_trans.dot(c_inv * point_gradient.col(j)) +
+								x_trans.dot(c_inv * point_hessian.block<3, 1>(3 * i, j)) +
+								point_gradient.col(j).dot(cov_dxd_pi));
+		}
+	}
+}
+
+template <typename PointSourceType, typename PointTargetType>
+void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeHessian(Eigen::Matrix<double, 6, 6> &hessian, typename pcl::PointCloud<PointSourceType> &trans_cloud, Eigen::Matrix<double, 6, 1> &p)
+{
+	PointSourceType x_pt, x_trans_pt;
+	Eigen::Vector3d x, x_trans;
+	Eigen::Matrix3d c_inv;
+
+	hessian.setZero();
+
+	Eigen::Matrix<double, 3, 6> point_gradient;
+	Eigen::Matrix<double, 18, 6> point_hessian;
+
+
+	for (int idx = 0; idx < source_cloud_->points.size(); idx++) {
+		x_trans_pt = trans_cloud.points[idx];
+
+		std::vector<int> neighbor_ids;
+
+		voxel_grid_.radiusSearch(x_trans_pt, resolution_, neighbor_ids);
+
+		for (int i = 0; i < neighbor_ids.size(); i++) {
+			int vid = neighbor_ids[i];
+
+			x_pt = source_cloud_->points[idx];
+			x = Eigen::Vector3d(x_pt.x, x_pt.y, x_pt.z);
+			x_trans = Eigen::Vector3d(x_trans_pt.x, x_trans_pt.y, x_trans_pt.z);
+			x_trans -= voxel_grid_.getCentroid(vid);
+			c_inv = voxel_grid_.getInverseCovariance(vid);
+
+			computePointDerivatives(x, point_gradient, point_hessian);
+
+			updateHessian(hessian, point_gradient, point_hessian, x_trans, c_inv);
+		}
+	}
+
+
+}
 
 template <typename PointSourceType, typename PointTargetType>
 void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeAngleDerivatives(Eigen::Matrix<double, 6, 1> pose, bool compute_hessian)
@@ -651,69 +720,6 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::updateInt
 	else {
 		return (true);
 	}
-}
-
-template <typename PointSourceType, typename PointTargetType>
-void NormalDistributionsTransform<PointSourceType, PointTargetType>::updateHessian(Eigen::Matrix<double, 6, 6> &hessian,
-																					Eigen::Matrix<double, 3, 6> point_gradient, Eigen::Matrix<double, 18, 6> point_hessian,
-																					Eigen::Vector3d &x_trans, Eigen::Matrix3d &c_inv)
-{
-	Eigen::Vector3d cov_dxd_pi;
-	double e_x_cov_x = gauss_d2_ * exp(-gauss_d2_ * x_trans.dot(c_inv * x_trans) / 2);
-
-	if (e_x_cov_x > 1 || e_x_cov_x < 0 || e_x_cov_x != e_x_cov_x) {
-		return;
-	}
-
-	e_x_cov_x *= gauss_d1_;
-
-	for (int i = 0; i < 6; i++) {
-		cov_dxd_pi = c_inv * point_gradient.col(i);
-
-		for (int j = 0; j < hessian.cols(); j++) {
-			hessian(i, j) += e_x_cov_x * (-gauss_d2_ * x_trans.dot(cov_dxd_pi) * x_trans.dot(c_inv * point_gradient.col(j)) +
-								x_trans.dot(c_inv * point_hessian.block<3, 1>(3 * i, j)) +
-								point_gradient.col(j).dot(cov_dxd_pi));
-		}
-	}
-}
-
-template <typename PointSourceType, typename PointTargetType>
-void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeHessian(Eigen::Matrix<double, 6, 6> &hessian, typename pcl::PointCloud<PointSourceType> &trans_cloud, Eigen::Matrix<double, 6, 1> &p)
-{
-	PointSourceType x_pt, x_trans_pt;
-	Eigen::Vector3d x, x_trans;
-	Eigen::Matrix3d c_inv;
-
-	hessian.setZero();
-
-	Eigen::Matrix<double, 3, 6> point_gradient;
-	Eigen::Matrix<double, 18, 6> point_hessian;
-
-
-	for (int idx = 0; idx < source_cloud_->points.size(); idx++) {
-		x_trans_pt = trans_cloud.points[idx];
-
-		std::vector<int> neighbor_ids;
-
-		voxel_grid_.radiusSearch(x_trans_pt, resolution_, neighbor_ids);
-
-		for (int i = 0; i < neighbor_ids.size(); i++) {
-			int vid = neighbor_ids[i];
-
-			x_pt = source_cloud_->points[idx];
-			x = Eigen::Vector3d(x_pt.x, x_pt.y, x_pt.z);
-			x_trans = Eigen::Vector3d(x_trans_pt.x, x_trans_pt.y, x_trans_pt.z);
-			x_trans -= voxel_grid_.getCentroid(vid);
-			c_inv = voxel_grid_.getInverseCovariance(vid);
-
-			computePointDerivatives(x, point_gradient, point_hessian);
-
-			updateHessian(hessian, point_gradient, point_hessian, x_trans, c_inv);
-		}
-	}
-
-
 }
 
 template <typename PointSourceType, typename PointTargetType>
