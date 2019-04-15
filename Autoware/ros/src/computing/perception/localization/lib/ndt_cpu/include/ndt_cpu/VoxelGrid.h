@@ -57,7 +57,6 @@ public:
 	/* Searching for the nearest point of each input query point.
 	 * Return the distance between the query point and its nearest neighbor.
 	 * If the distance is larger than max_range, then return DBL_MAX. */
-
 	double nearestNeighborDistance(PointSourceType query_point, float max_range);
 
 	Eigen::Vector3d getCentroid(int voxel_id) const;

@@ -47,7 +47,7 @@ protected:
 
 	virtual void computeTransformation(const Eigen::Matrix<float, 4, 4> &guess);
 
-	// [x,y,z,roll,pitch,yaw] 的最小变化量(m, rad)，当小于这个值时就停止 align
+	// [x,y,z,roll,pitch,yaw] 的最小变化量(m, rad)，当小于这个值时就停止 align，在 NDT 里是 MT 的最小更新步长
 	double transformation_epsilon_;
 	int max_iterations_;
 

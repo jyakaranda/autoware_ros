@@ -310,6 +310,7 @@ void VoxelGrid<PointSourceType>::computeCentroidAndCovariance()
 					Eigen::Matrix3d evecs = sv.eigenvectors();
 					Eigen::Matrix3d evals = sv.eigenvalues().asDiagonal();
 
+					// TODO: 还不太明白为什么
 					if (evals(0, 0) < 0 || evals(1, 1) < 0 || evals(2, 2) <= 0) {
 						(*points_per_voxel_)[i] = -1;
 						continue;

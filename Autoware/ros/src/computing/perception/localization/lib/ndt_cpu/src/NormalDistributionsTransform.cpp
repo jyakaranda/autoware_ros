@@ -112,6 +112,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 
 	double gauss_c1, gauss_c2, gauss_d3;
 
+	// 公式 6.8，但还不知道 gauss_c1 是怎么计算的
 	gauss_c1 = 10 * ( 1 - outlier_ratio_);
 	gauss_c2 = outlier_ratio_ / pow(resolution_, 3);
 	gauss_d3 = - log(gauss_c2);
@@ -139,7 +140,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 	double score = 0;
 	double delta_p_norm;
 
-	// 这个 score 不知道含义是什么
+	// 这个 score 不知道含义是什么。计算 score function 关于 位姿 p 的 Jacobian 和 Hessian
 	score = computeDerivatives(score_gradient, hessian, trans_cloud_, p);
 
 	int points_number = source_cloud_->points.size();
@@ -160,6 +161,7 @@ void NormalDistributionsTransform<PointSourceType, PointTargetType>::computeTran
 		}
 
 		delta_p.normalize();
+		// 计算更新步长
 		delta_p_norm = computeStepLengthMT(p, delta_p, delta_p_norm, step_size_, transformation_epsilon_ / 2, score, score_gradient, hessian, trans_cloud_);
 		delta_p *= delta_p_norm;
 
@@ -212,7 +214,7 @@ double NormalDistributionsTransform<PointSourceType, PointTargetType>::computeDe
 		neighbor_ids.clear();
 		x_trans_pt = trans_cloud.points[idx];
 
-		// TODO: 为什么不直接找最近的 voxel，而是找一个 radius 内的所有 voxel 来更新 J,H。
+		// TODO: 为什么不直接找最近的 voxel，而是找一个 radius 内的所有 voxel 来更新 J,H。Magnusson 的论文里没有直接说明，但在 6.3.5 介绍 linked cells 时简单说了一下不同，应该是为了平滑
 		voxel_grid_.radiusSearch(x_trans_pt, resolution_, neighbor_ids);
 
 		for (int i = 0; i < neighbor_ids.size(); i++) {
